@@ -18,8 +18,18 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 openai.api_key = OPENAI_API_KEY
 
 # Authenticate with Twitter
-auth = tweepy.OAuth1UserHandler(TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET)
-api = tweepy.API(auth)
+client = tweepy.Client(
+    bearer_token=os.getenv("TWITTER_BEARER_TOKEN"),
+    consumer_key=TWITTER_API_KEY,
+    consumer_secret=TWITTER_API_SECRET,
+    access_token=TWITTER_ACCESS_TOKEN,
+    access_token_secret=TWITTER_ACCESS_TOKEN_SECRET
+)
+
+# Get your Twitter user ID
+def get_user_id(username):
+    user = client.get_user(username=username)
+    return user.data.id
 
 # Generate funny/sarcastic replies using OpenAI
 def generate_reply(comment_text):
@@ -39,18 +49,33 @@ def generate_reply(comment_text):
 # Fetch and reply to comments
 def reply_to_comments():
     print("Fetching your tweets...")
-    tweets = api.user_timeline(count=10, tweet_mode="extended")  # Get last 10 tweets
-    for tweet in tweets:
+
+    # Get your user ID
+    username = "your_twitter_username"  # Replace with your username
+    user_id = get_user_id(username)
+
+    # Fetch your tweets
+    tweets = client.get_users_tweets(id=user_id, max_results=10)  # Get last 10 tweets
+    if not tweets.data:
+        print("No tweets found.")
+        return
+
+    for tweet in tweets.data:
         tweet_id = tweet.id
         print(f"Checking comments for tweet ID: {tweet_id}")
 
-        # Get replies to the tweet
-        comments = api.search_tweets(q=f'to:{tweet.user.screen_name}', since_id=tweet_id, tweet_mode="extended")
-        for comment in comments:
-            if comment.in_reply_to_status_id == tweet_id:  # Ensure it's a reply
-                user = comment.user.screen_name
-                text = comment.full_text
-                print(f"Found comment from @{user}: {text}")
+        # Search for comments (replies to the tweet)
+        query = f"to:{username}"
+        comments = client.search_recent_tweets(query=query, since_id=tweet_id, max_results=10)
+        if not comments.data:
+            print("No comments found.")
+            continue
+
+        for comment in comments.data:
+            if "referenced_tweets" in comment.data and comment.data["referenced_tweets"][0]["id"] == tweet_id:  # Ensure it's a reply
+                user = comment.author_id
+                text = comment.text
+                print(f"Found comment from user ID {user}: {text}")
 
                 # Generate a reply
                 reply_text = generate_reply(text)
@@ -58,13 +83,10 @@ def reply_to_comments():
 
                 # Post the reply
                 try:
-                    api.update_status(
-                        status=f"@{user} {reply_text}",
-                        in_reply_to_status_id=comment.id
-                    )
-                    print(f"Replied to @{user}")
-                except tweepy.TweepError as e:
-                    print(f"Error replying to @{user}: {e}")
+                    client.create_tweet(text=f"@{user} {reply_text}", in_reply_to_tweet_id=comment.id)
+                    print(f"Replied to user ID {user}")
+                except tweepy.TweepyException as e:
+                    print(f"Error replying to user ID {user}: {e}")
     print("Finished checking comments.")
 
 # Main loop
