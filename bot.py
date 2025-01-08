@@ -21,8 +21,22 @@ client = tweepy.Client(
 # OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Track processed comment IDs
-processed_comment_ids = set()
+# Persistent storage for processed IDs
+PROCESSED_IDS_FILE = "processed_ids.txt"
+
+def load_processed_ids():
+    """Load processed IDs from file."""
+    if not os.path.exists(PROCESSED_IDS_FILE):
+        return set()
+    with open(PROCESSED_IDS_FILE, "r") as f:
+        return set(line.strip() for line in f)
+
+def save_processed_id(comment_id):
+    """Save a processed comment ID to file."""
+    with open(PROCESSED_IDS_FILE, "a") as f:
+        f.write(f"{comment_id}\n")
+
+processed_comment_ids = load_processed_ids()
 
 def get_user_id(username):
     """Fetch the user ID for the given username."""
@@ -66,7 +80,7 @@ def reply_to_comments(username):
 
         # Fetch recent replies to the tweet
         query = f"conversation_id:{tweet_id}"
-        comments = client.search_recent_tweets(query=query, max_results=10)
+        comments = client.search_recent_tweets(query=query, max_results=3)  # Limit to 3 comments per tweet
 
         if not comments.data:
             print(f"No comments found for tweet ID: {tweet_id}")
@@ -93,6 +107,7 @@ def reply_to_comments(username):
 
             # Track processed comment
             processed_comment_ids.add(comment.id)
+            save_processed_id(comment.id)
 
     except tweepy.errors.TooManyRequests as e:
         reset_time = int(e.response.headers.get("x-rate-limit-reset", time.time() + 900))
@@ -107,7 +122,7 @@ def start_bot():
     username = "mikasa_model"  # Target account username
     while True:
         reply_to_comments(username)
-        time.sleep(1800)  # Wait 30 minutes before polling again
+        time.sleep(3600)  # Wait 60 minutes before polling again
 
 if __name__ == "__main__":
     start_bot()
