@@ -47,7 +47,44 @@ def generate_reply(comment_text):
         print(f"Error generating reply: {e}")
         return "Oops! My sarcasm circuits are overloaded! 😂"
 
-# Process comments and reply
+# Process replies to a specific tweet
+def process_replies(tweet_id):
+    try:
+        print(f"Fetching replies for tweet ID: {tweet_id}")
+
+        # Fetch replies using conversation_id
+        query = f"conversation_id:{tweet_id}"
+        comments = client.search_recent_tweets(query=query, max_results=100)
+
+        if not comments.data:
+            print(f"No comments found for tweet ID: {tweet_id}")
+            return
+
+        for comment in comments.data:
+            if comment.id in processed_comment_ids:
+                continue  # Skip already processed comments
+
+            text = comment.text
+            author_id = comment.author_id
+            print(f"Found comment from user ID {author_id}: {text}")
+
+            # Generate a reply and post it
+            reply_text = generate_reply(text)
+            print(f"Replying with: {reply_text}")
+
+            client.create_tweet(
+                text=f"@{author_id} {reply_text}",
+                in_reply_to_tweet_id=comment.id
+            )
+            print(f"Replied to comment ID: {comment.id}")
+
+            # Add comment ID to processed set
+            processed_comment_ids.add(comment.id)
+
+    except Exception as e:
+        print(f"Error processing replies for tweet ID {tweet_id}: {e}")
+
+# Fetch tweets and process their comments
 def reply_to_comments(username):
     try:
         print(f"Fetching tweets for {username}...")
@@ -60,37 +97,7 @@ def reply_to_comments(username):
             return
 
         for tweet in tweets.data:
-            tweet_id = tweet.id
-            print(f"Processing comments for tweet ID: {tweet_id}")
-
-            # Search for comments (replies) to the tweet
-            query = f"conversation_id:{tweet_id}"
-            comments = client.search_recent_tweets(query=query, max_results=10)
-
-            if not comments.data:
-                print(f"No comments found for tweet ID: {tweet_id}")
-                continue
-
-            for comment in comments.data:
-                if comment.id in processed_comment_ids:
-                    continue  # Skip already processed comments
-
-                text = comment.text
-                author_id = comment.author_id
-                print(f"Found comment from user ID {author_id}: {text}")
-
-                # Generate a reply and post it
-                reply_text = generate_reply(text)
-                print(f"Replying with: {reply_text}")
-
-                client.create_tweet(
-                    text=f"@{author_id} {reply_text}",
-                    in_reply_to_tweet_id=comment.id
-                )
-                print(f"Replied to comment ID: {comment.id}")
-
-                # Add comment ID to processed set
-                processed_comment_ids.add(comment.id)
+            process_replies(tweet.id)
 
     except tweepy.errors.TooManyRequests:
         print("Rate limit reached. Waiting...")
@@ -103,7 +110,7 @@ def start_bot():
     username = "mikasa_model"  # Target account username
     while True:
         reply_to_comments(username)
-        time.sleep(3150)  # Wait 5 minutes before polling again
+        time.sleep(150)  # Wait 5 minutes before polling again
 
 if __name__ == "__main__":
     start_bot()
