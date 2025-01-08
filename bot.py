@@ -2,6 +2,7 @@ import os
 import tweepy
 import openai
 import time
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Load environment variables from .env
@@ -20,8 +21,11 @@ client = tweepy.Client(
 # OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Set to store processed comment IDs
+# Track processed IDs
 processed_comment_ids = set()
+
+# Track last processed time
+last_processed_time = None
 
 # Get the user ID for the bot account
 def get_user_id(username):
@@ -49,12 +53,13 @@ def generate_reply(comment_text):
 
 # Process replies to a specific tweet
 def process_replies(tweet_id):
+    global last_processed_time
     try:
         print(f"Fetching replies for tweet ID: {tweet_id}")
 
         # Fetch replies using conversation_id
         query = f"conversation_id:{tweet_id}"
-        comments = client.search_recent_tweets(query=query, max_results=100)
+        comments = client.search_recent_tweets(query=query, max_results=10)
 
         if not comments.data:
             print(f"No comments found for tweet ID: {tweet_id}")
@@ -63,6 +68,9 @@ def process_replies(tweet_id):
         for comment in comments.data:
             if comment.id in processed_comment_ids:
                 continue  # Skip already processed comments
+
+            if last_processed_time and comment.created_at <= last_processed_time:
+                continue  # Skip older comments
 
             text = comment.text
             author_id = comment.author_id
@@ -80,6 +88,9 @@ def process_replies(tweet_id):
 
             # Add comment ID to processed set
             processed_comment_ids.add(comment.id)
+
+        # Update last processed time
+        last_processed_time = datetime.now()
 
     except Exception as e:
         print(f"Error processing replies for tweet ID {tweet_id}: {e}")
@@ -110,7 +121,7 @@ def start_bot():
     username = "mikasa_model"  # Target account username
     while True:
         reply_to_comments(username)
-        time.sleep(600)  # Wait 10 minutes before polling again
+        time.sleep(1800)  # Wait 30 minutes before polling again
 
 if __name__ == "__main__":
     start_bot()
