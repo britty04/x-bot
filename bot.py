@@ -2,7 +2,7 @@ import os
 import tweepy
 import openai
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Load environment variables from .env
@@ -21,14 +21,12 @@ client = tweepy.Client(
 # OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Track processed IDs
+# Track last processed comment timestamp
+last_processed_time = datetime.utcnow() - timedelta(minutes=5)  # Start 5 minutes in the past
 processed_comment_ids = set()
 
-# Track last processed time
-last_processed_time = None
-
-# Get the user ID for the bot account
 def get_user_id(username):
+    """Fetch the user ID for the given username."""
     try:
         user = client.get_user(username=username)
         return user.data.id
@@ -36,8 +34,8 @@ def get_user_id(username):
         print(f"Error fetching user ID for {username}: {e}")
         raise
 
-# Generate a funny/sarcastic reply using OpenAI
 def generate_reply(comment_text):
+    """Generate a funny and sarcastic reply using OpenAI."""
     try:
         prompt = f"Reply with a funny and sarcastic comment to: '{comment_text}'"
         response = openai.Completion.create(
@@ -51,77 +49,74 @@ def generate_reply(comment_text):
         print(f"Error generating reply: {e}")
         return "Oops! My sarcasm circuits are overloaded! 😂"
 
-# Process replies to a specific tweet
-def process_replies(tweet_id):
-    global last_processed_time
-    try:
-        print(f"Fetching replies for tweet ID: {tweet_id}")
-
-        # Fetch replies using conversation_id
-        query = f"conversation_id:{tweet_id}"
-        comments = client.search_recent_tweets(query=query, max_results=10)
-
-        if not comments.data:
-            print(f"No comments found for tweet ID: {tweet_id}")
-            return
-
-        for comment in comments.data:
-            if comment.id in processed_comment_ids:
-                continue  # Skip already processed comments
-
-            if last_processed_time and comment.created_at <= last_processed_time:
-                continue  # Skip older comments
-
-            text = comment.text
-            author_id = comment.author_id
-            print(f"Found comment from user ID {author_id}: {text}")
-
-            # Generate a reply and post it
-            reply_text = generate_reply(text)
-            print(f"Replying with: {reply_text}")
-
-            client.create_tweet(
-                text=f"@{author_id} {reply_text}",
-                in_reply_to_tweet_id=comment.id
-            )
-            print(f"Replied to comment ID: {comment.id}")
-
-            # Add comment ID to processed set
-            processed_comment_ids.add(comment.id)
-
-        # Update last processed time
-        last_processed_time = datetime.now()
-
-    except Exception as e:
-        print(f"Error processing replies for tweet ID {tweet_id}: {e}")
-
-# Fetch tweets and process their comments
-def reply_to_comments(username):
+def reply_to_new_comments(username):
+    """Fetch and reply to new comments on tweets."""
+    global last_processed_time, processed_comment_ids
     try:
         print(f"Fetching tweets for {username}...")
         user_id = get_user_id(username)
 
         # Fetch recent tweets
-        tweets = client.get_users_tweets(id=user_id, max_results=5)  # Reduce to 5 tweets
+        tweets = client.get_users_tweets(id=user_id, max_results=5)  # Only process 5 most recent tweets
         if not tweets.data:
             print("No tweets found.")
             return
 
         for tweet in tweets.data:
-            process_replies(tweet.id)
+            tweet_id = tweet.id
+            print(f"Checking comments for tweet ID: {tweet_id}")
+
+            # Fetch recent replies to the tweet
+            query = f"conversation_id:{tweet_id}"
+            comments = client.search_recent_tweets(query=query, max_results=10)
+
+            if not comments.data:
+                print(f"No comments found for tweet ID: {tweet_id}")
+                continue
+
+            for comment in comments.data:
+                if comment.id in processed_comment_ids:
+                    continue  # Skip already processed comments
+
+                # Skip comments older than the last processed time
+                comment_time = comment.created_at
+                if comment_time <= last_processed_time:
+                    continue
+
+                # Process the new comment
+                text = comment.text
+                author_id = comment.author_id
+                print(f"Found new comment from user ID {author_id}: {text}")
+
+                # Generate a reply
+                reply_text = generate_reply(text)
+                print(f"Replying with: {reply_text}")
+
+                # Post the reply
+                client.create_tweet(
+                    text=f"@{author_id} {reply_text}",
+                    in_reply_to_tweet_id=comment.id
+                )
+                print(f"Replied to comment ID: {comment.id}")
+
+                # Track processed comment
+                processed_comment_ids.add(comment.id)
+
+        # Update last processed time
+        last_processed_time = datetime.utcnow()
 
     except tweepy.errors.TooManyRequests:
-        print("Rate limit reached. Waiting...")
-        time.sleep(900)  # Wait 15 minutes
+        print("Rate limit reached. Sleeping for 15 minutes...")
+        time.sleep(900)  # Wait for 15 minutes
     except Exception as e:
         print(f"Unexpected error: {e}")
 
-# Main loop to run the bot
 def start_bot():
+    """Start the bot and run continuously."""
     username = "mikasa_model"  # Target account username
     while True:
-        reply_to_comments(username)
-        time.sleep(1800)  # Wait 30 minutes before polling again
+        reply_to_new_comments(username)
+        time.sleep(300)  # Wait 5 minutes before polling again
 
 if __name__ == "__main__":
     start_bot()
