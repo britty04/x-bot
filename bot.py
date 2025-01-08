@@ -91,7 +91,7 @@ def reply_to_comments(username):
         user_id = get_user_id(username)
 
         # Fetch recent tweets
-        tweets = client.get_users_tweets(id=user_id, max_results=10)
+        tweets = client.get_users_tweets(id=user_id, max_results=5)  # Reduce to 5 tweets
         if not tweets.data:
             print("No tweets found.")
             return
@@ -101,7 +101,7 @@ def reply_to_comments(username):
 
     except tweepy.errors.TooManyRequests:
         print("Rate limit reached. Waiting...")
-        time.sleep(300)  # Wait 15 minutes
+        time.sleep(900)  # Wait 15 minutes
     except Exception as e:
         print(f"Unexpected error: {e}")
 
@@ -110,7 +110,7 @@ def start_bot():
     username = "mikasa_model"  # Target account username
     while True:
         reply_to_comments(username)
-        time.sleep(150)  # Wait 5 minutes before polling again
+        time.sleep(600)  # Wait 10 minutes before polling again
 
 if __name__ == "__main__":
     start_bot()
