@@ -22,7 +22,7 @@ client = tweepy.Client(
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Track last processed comment timestamp
-last_processed_time = datetime.utcnow() - timedelta(minutes=5)  # Start 5 minutes in the past
+last_processed_time = datetime.utcnow() - timedelta(minutes=15)  # Start 15 minutes in the past
 processed_comment_ids = set()
 
 def get_user_id(username):
@@ -57,7 +57,7 @@ def reply_to_new_comments(username):
         user_id = get_user_id(username)
 
         # Fetch recent tweets
-        tweets = client.get_users_tweets(id=user_id, max_results=5)  # Only process 5 most recent tweets
+        tweets = client.get_users_tweets(id=user_id, max_results=3)  # Only process 3 most recent tweets
         if not tweets.data:
             print("No tweets found.")
             return
@@ -68,7 +68,7 @@ def reply_to_new_comments(username):
 
             # Fetch recent replies to the tweet
             query = f"conversation_id:{tweet_id}"
-            comments = client.search_recent_tweets(query=query, max_results=10)
+            comments = client.search_recent_tweets(query=query, max_results=5)  # Limit to 5 comments per tweet
 
             if not comments.data:
                 print(f"No comments found for tweet ID: {tweet_id}")
@@ -105,9 +105,12 @@ def reply_to_new_comments(username):
         # Update last processed time
         last_processed_time = datetime.utcnow()
 
-    except tweepy.errors.TooManyRequests:
-        print("Rate limit reached. Sleeping for 15 minutes...")
-        time.sleep(900)  # Wait for 15 minutes
+    except tweepy.errors.TooManyRequests as e:
+        # Handle rate limits dynamically
+        reset_time = int(e.response.headers.get("x-rate-limit-reset", time.time() + 900))
+        sleep_time = reset_time - int(time.time())
+        print(f"Rate limit reached. Sleeping for {sleep_time} seconds...")
+        time.sleep(sleep_time)
     except Exception as e:
         print(f"Unexpected error: {e}")
 
@@ -116,7 +119,7 @@ def start_bot():
     username = "mikasa_model"  # Target account username
     while True:
         reply_to_new_comments(username)
-        time.sleep(300)  # Wait 5 minutes before polling again
+        time.sleep(900)  # Wait 15 minutes before polling again
 
 if __name__ == "__main__":
     start_bot()
