@@ -14,16 +14,16 @@ client = tweepy.Client(
     consumer_secret=os.getenv("TWITTER_API_SECRET"),
     access_token=os.getenv("TWITTER_ACCESS_TOKEN"),
     access_token_secret=os.getenv("TWITTER_ACCESS_TOKEN_SECRET"),
-    wait_on_rate_limit=True
+    wait_on_rate_limit=True  # Automatically handle rate limits
 )
 
 # OpenAI API Key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Track the last processed comment ID
-last_processed_comment_id = None
+# Set to store processed comment IDs
+processed_comment_ids = set()
 
-# Fetch the user ID of the account
+# Get the user ID for the bot account
 def get_user_id(username):
     try:
         user = client.get_user(username=username)
@@ -47,12 +47,10 @@ def generate_reply(comment_text):
         print(f"Error generating reply: {e}")
         return "Oops! My sarcasm circuits are overloaded! 😂"
 
-# Process and reply to comments
-def reply_to_comments():
-    global last_processed_comment_id
+# Process comments and reply
+def reply_to_comments(username):
     try:
-        print("Fetching tweets...")
-        username = "mikasa_model"  # Target username
+        print(f"Fetching tweets for {username}...")
         user_id = get_user_id(username)
 
         # Fetch recent tweets
@@ -63,26 +61,25 @@ def reply_to_comments():
 
         for tweet in tweets.data:
             tweet_id = tweet.id
-            print(f"Checking comments for tweet ID: {tweet_id}")
+            print(f"Processing comments for tweet ID: {tweet_id}")
 
-            # Search for comments (replies to the tweet)
+            # Search for comments (replies) to the tweet
             query = f"conversation_id:{tweet_id}"
             comments = client.search_recent_tweets(query=query, max_results=10)
 
             if not comments.data:
-                print("No comments found for tweet ID:", tweet_id)
+                print(f"No comments found for tweet ID: {tweet_id}")
                 continue
 
             for comment in comments.data:
-                # Skip already processed comments
-                if last_processed_comment_id and comment.id <= last_processed_comment_id:
-                    continue
+                if comment.id in processed_comment_ids:
+                    continue  # Skip already processed comments
 
                 text = comment.text
                 author_id = comment.author_id
                 print(f"Found comment from user ID {author_id}: {text}")
 
-                # Generate and post the reply
+                # Generate a reply and post it
                 reply_text = generate_reply(text)
                 print(f"Replying with: {reply_text}")
 
@@ -91,19 +88,22 @@ def reply_to_comments():
                     in_reply_to_tweet_id=comment.id
                 )
                 print(f"Replied to comment ID: {comment.id}")
-                last_processed_comment_id = comment.id
+
+                # Add comment ID to processed set
+                processed_comment_ids.add(comment.id)
 
     except tweepy.errors.TooManyRequests:
         print("Rate limit reached. Waiting...")
-        time.sleep(900)  # Wait for 15 minutes
+        time.sleep(300)  # Wait 15 minutes
     except Exception as e:
         print(f"Unexpected error: {e}")
 
-# Main loop
+# Main loop to run the bot
 def start_bot():
+    username = "mikasa_model"  # Target account username
     while True:
-        reply_to_comments()
-        time.sleep(60)  # Run every 1 minute
+        reply_to_comments(username)
+        time.sleep(3150)  # Wait 5 minutes before polling again
 
 if __name__ == "__main__":
     start_bot()
