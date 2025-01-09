@@ -5,24 +5,53 @@ import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-# Load environment variables from .env
+# Load environment variables
 load_dotenv()
 
 # Twitter API credentials
+TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
+TWITTER_ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
+
+# OpenAI API Key
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# Check for missing environment variables
+if not all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET, TWITTER_BEARER_TOKEN, OPENAI_API_KEY]):
+    raise ValueError("One or more environment variables are missing. Please check your .env file or Railway environment settings.")
+
+# Initialize Twitter client
+print("Initializing Twitter client...")
 client = tweepy.Client(
-    bearer_token=os.getenv("TWITTER_BEARER_TOKEN"),
-    consumer_key=os.getenv("TWITTER_API_KEY"),
-    consumer_secret=os.getenv("TWITTER_API_SECRET"),
-    access_token=os.getenv("TWITTER_ACCESS_TOKEN"),
-    access_token_secret=os.getenv("TWITTER_ACCESS_TOKEN_SECRET"),
+    bearer_token=TWITTER_BEARER_TOKEN,
+    consumer_key=TWITTER_API_KEY,
+    consumer_secret=TWITTER_API_SECRET,
+    access_token=TWITTER_ACCESS_TOKEN,
+    access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
     wait_on_rate_limit=True
 )
 
-# OpenAI API Key
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Initialize OpenAI
+openai.api_key = OPENAI_API_KEY
 
-# Track processed comment IDs
-processed_comment_ids = set()
+# Persistent storage for processed IDs
+PROCESSED_IDS_FILE = "processed_ids.txt"
+
+def load_processed_ids():
+    """Load processed comment IDs from file."""
+    if not os.path.exists(PROCESSED_IDS_FILE):
+        return set()
+    with open(PROCESSED_IDS_FILE, "r") as f:
+        return set(line.strip() for line in f)
+
+def save_processed_id(comment_id):
+    """Save a processed comment ID to file."""
+    with open(PROCESSED_IDS_FILE, "a") as f:
+        f.write(f"{comment_id}\n")
+
+processed_comment_ids = load_processed_ids()
 
 def get_user_id(username):
     """Fetch the user ID for the given username."""
@@ -54,8 +83,8 @@ def reply_to_comments(username):
         print(f"Fetching tweets for {username}...")
         user_id = get_user_id(username)
 
-        # Fetch up to 5 recent tweets
-        tweets = client.get_users_tweets(id=user_id, max_results=5)  # Fetch at least 5 tweets
+        # Fetch recent tweets (at least 5 required by Twitter API)
+        tweets = client.get_users_tweets(id=user_id, max_results=5)
         if not tweets.data:
             print("No tweets found.")
             return
@@ -94,6 +123,7 @@ def reply_to_comments(username):
 
             # Track processed comment
             processed_comment_ids.add(comment.id)
+            save_processed_id(comment.id)
 
     except tweepy.errors.TooManyRequests:
         print("Rate limit reached. Sleeping for 15 minutes...")
@@ -103,10 +133,15 @@ def reply_to_comments(username):
 
 def start_bot():
     """Run the bot continuously with extended intervals."""
-    username = "mikasa_model"  # Target account username
+    username = "mikasa_model"  # Replace with your bot's username
     while True:
-        reply_to_comments(username)
+        try:
+            reply_to_comments(username)
+        except Exception as e:
+            print(f"Unexpected error in main loop: {e}")
+        print("Sleeping for 60 minutes...")
         time.sleep(3600)  # Wait 60 minutes before polling again
 
 if __name__ == "__main__":
+    print("Starting bot...")
     start_bot()
