@@ -1,6 +1,8 @@
 import os
 import tweepy
 import openai
+import time
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Load environment variables from .env
@@ -22,6 +24,15 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 # Track processed comment IDs
 processed_comment_ids = set()
 
+def get_user_id(username):
+    """Fetch the user ID for the given username."""
+    try:
+        user = client.get_user(username=username)
+        return user.data.id
+    except Exception as e:
+        print(f"Error fetching user ID for {username}: {e}")
+        raise
+
 def generate_reply(comment_text):
     """Generate a funny and sarcastic reply using OpenAI."""
     try:
@@ -41,22 +52,22 @@ def reply_to_comments(username):
     """Fetch and reply to new comments."""
     try:
         print(f"Fetching tweets for {username}...")
-        user = client.get_user(username=username)
-        user_id = user.data.id
+        user_id = get_user_id(username)
 
-        # Fetch the most recent tweet
-        tweets = client.get_users_tweets(id=user_id, max_results=1)
+        # Fetch up to 5 recent tweets
+        tweets = client.get_users_tweets(id=user_id, max_results=5)  # Fetch at least 5 tweets
         if not tweets.data:
             print("No tweets found.")
             return
 
+        # Process only the most recent tweet
         tweet = tweets.data[0]
         tweet_id = tweet.id
         print(f"Processing comments for tweet ID: {tweet_id}")
 
         # Fetch recent replies to the tweet
         query = f"conversation_id:{tweet_id}"
-        comments = client.search_recent_tweets(query=query, max_results=1)  # Only 1 comment
+        comments = client.search_recent_tweets(query=query, max_results=5)  # Limit to 5 comments
 
         if not comments.data:
             print(f"No comments found for tweet ID: {tweet_id}")
@@ -85,10 +96,17 @@ def reply_to_comments(username):
             processed_comment_ids.add(comment.id)
 
     except tweepy.errors.TooManyRequests:
-        print("Rate limit reached. Manual execution required later.")
+        print("Rate limit reached. Sleeping for 15 minutes...")
+        time.sleep(900)  # Wait for 15 minutes
     except Exception as e:
         print(f"Unexpected error: {e}")
 
+def start_bot():
+    """Run the bot continuously with extended intervals."""
+    username = "mikasa_model"  # Target account username
+    while True:
+        reply_to_comments(username)
+        time.sleep(3600)  # Wait 60 minutes before polling again
+
 if __name__ == "__main__":
-    username = "mikasa_model"  # Replace with your bot's username
-    reply_to_comments(username)
+    start_bot()
